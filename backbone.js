@@ -744,11 +744,7 @@
     start : function() {
       if (historyStarted) throw new Error("Backbone.history has already been started");
       var docMode = document.documentMode;
-      var oldIE = ($.browser.msie && (!docMode || docMode <= 7));
-      if (oldIE) {
-        this.iframe = $('<iframe src="javascript:0" tabindex="-1" />').hide().appendTo('body')[0].contentWindow;
-      }
-      if ('onhashchange' in window && !oldIE) {
+      if ('onhashchange' in window) {
         $(window).bind('hashchange', this.checkUrl);
       } else {
         setInterval(this.checkUrl, this.interval);
