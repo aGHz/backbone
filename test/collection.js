@@ -44,6 +44,33 @@ $(document).ready(function() {
     equals(col.get(101), model);
   });
 
+  test("Collection: add model with attributes modified by set", function() {
+    var CustomSetModel = Backbone.Model.extend({
+      defaults: {
+        number_as_string: null //presence of defaults forces extend
+      },
+
+      validate: function (attributes) {
+        if (!_.isString(attributes.num_as_string)) {
+          return 'fail';
+        }
+      },
+
+      set: function (attributes, options) {
+        if (attributes.num_as_string) {
+          attributes.num_as_string = attributes.num_as_string.toString();
+        }
+        Backbone.Model.prototype.set.call(this, attributes, options);
+      }
+    });
+
+    var CustomSetCollection = Backbone.Collection.extend({
+      model: CustomSetModel
+    });
+    var col = new CustomSetCollection([{ num_as_string: 2 }]);
+    equals(col.length, 1);
+  });
+
   test("Collection: update index when id changes", function() {
     var col = new Backbone.Collection();
     col.add([
@@ -83,6 +110,45 @@ $(document).ready(function() {
     equals(otherCol.length, 1);
     equals(secondAdded, null);
     ok(opts.amazing);
+
+    var f = new Backbone.Model({id: 20, label : 'f'});
+    var g = new Backbone.Model({id: 21, label : 'g'});
+    var h = new Backbone.Model({id: 22, label : 'h'});
+    var atCol = new Backbone.Collection([f, g, h]);
+    equals(atCol.length, 3);
+    atCol.add(e, {at: 1});
+    equals(atCol.length, 4);
+    equals(atCol.at(1), e);
+    equals(atCol.last(), h);
+  });
+
+  test("Collection: add model to collection and verify index updates", function() {
+    var f = new Backbone.Model({id: 20, label : 'f'});
+    var g = new Backbone.Model({id: 21, label : 'g'});
+    var h = new Backbone.Model({id: 22, label : 'h'});
+    var col = new Backbone.Collection();
+    
+    var counts = [];
+     
+    col.bind('add', function(model, collection, options) {
+      counts.push(options.index);  
+    });
+    col.add(f); 
+    col.add(g); 
+    col.add(h); 
+    ok(_.isEqual(counts, [0,1,2]));
+  });
+
+  test("Collection: add model to collection twice", function() {
+    try {
+      // no id, same cid
+      var a2 = new Backbone.Model({label: a.label});
+      a2.cid = a.cid;
+      col.add(a2);
+      ok(false, "duplicate; expected add to fail");
+    } catch (e) {
+      equals(e.message, "Can't add the same model to a set twice,3");
+    }
   });
 
   test("Collection: add model to multiple collections", function() {
@@ -124,6 +190,23 @@ $(document).ready(function() {
     equals(otherRemoved, null);
   });
 
+  test("Collection: remove should return correct index events", function() {
+    var f = new Backbone.Model({id: 20, label : 'f'});
+    var g = new Backbone.Model({id: 21, label : 'g'});
+    var h = new Backbone.Model({id: 22, label : 'h'});
+    var col = new Backbone.Collection([f,g,h]);
+    
+    var counts = [];
+     
+    col.bind('remove', function(model, collection, options) {
+      counts.push(options.index);  
+    });
+    col.remove(h); 
+    col.remove(g); 
+    col.remove(f); 
+    ok(_.isEqual(counts, [2,1,0]));
+  });
+
   test("Collection: events are unbound on remove", function() {
     var counter = 0;
     var dj = new Backbone.Model();
@@ -131,7 +214,7 @@ $(document).ready(function() {
     emcees.bind('change', function(){ counter++; });
     dj.set({name : 'Kool'});
     equals(counter, 1);
-    emcees.refresh([]);
+    emcees.reset([]);
     equals(dj.collection, undefined);
     dj.set({name : 'Shadow'});
     equals(counter, 1);
@@ -195,9 +278,20 @@ $(document).ready(function() {
     equals(counter, 2);
   });
 
-  test("Colllection: model destroy removes from all collections", function() {
+  test("Collection: model destroy removes from all collections", function() {
     var e = new Backbone.Model({id: 5, title: 'Othello'});
     e.sync = function(method, model, options) { options.success({}); };
+    var colE = new Backbone.Collection([e]);
+    var colF = new Backbone.Collection([e]);
+    e.destroy();
+    ok(colE.length == 0);
+    ok(colF.length == 0);
+    equals(null, e.collection);
+  });
+
+  test("Colllection: non-persisted model destroy removes from all collections", function() {
+    var e = new Backbone.Model({title: 'Othello'});
+    e.sync = function(method, model, options) { throw "should not be called"; };
     var colE = new Backbone.Collection([e]);
     var colF = new Backbone.Collection([e]);
     e.destroy();
@@ -231,6 +325,22 @@ $(document).ready(function() {
     });
     var col = new ValidatingCollection();
     equals(col.create({"foo":"bar"}),false);
+  });
+
+  test("Collection: a failing create runs the error callback", function() {
+    var ValidatingModel = Backbone.Model.extend({
+      validate: function(attrs) {
+        return "fail";
+      }
+    });
+    var ValidatingCollection = Backbone.Collection.extend({
+      model: ValidatingModel
+    });
+    var flag = false;
+    var callback = function(model, error) { flag = true; };
+    var col = new ValidatingCollection();
+    col.create({"foo":"bar"}, { error: callback });
+    equals(flag, true);
   });
 
   test("collection: initialize", function() {
@@ -267,23 +377,30 @@ $(document).ready(function() {
          [0, 4]);
   });
 
-  test("Collection: refresh", function() {
-    var refreshed = 0;
+  test("Collection: reset", function() {
+    var resetCount = 0;
     var models = col.models;
-    col.bind('refresh', function() { refreshed += 1; });
-    col.refresh([]);
-    equals(refreshed, 1);
+    col.bind('reset', function() { resetCount += 1; });
+    col.reset([]);
+    equals(resetCount, 1);
     equals(col.length, 0);
     equals(col.last(), null);
-    col.refresh(models);
-    equals(refreshed, 2);
+    col.reset(models);
+    equals(resetCount, 2);
     equals(col.length, 4);
     equals(col.last(), a);
-    col.refresh(_.map(models, function(m){ return m.attributes; }));
-    equals(refreshed, 3);
+    col.reset(_.map(models, function(m){ return m.attributes; }));
+    equals(resetCount, 3);
     equals(col.length, 4);
     ok(col.last() !== a);
     ok(_.isEqual(col.last().attributes, a.attributes));
+  });
+
+  test("Collection: trigger custom events on models", function() {
+    var fired = null;
+    a.bind("custom", function() { fired = true; });
+    a.trigger("custom");
+    equals(fired, true);
   });
 
 });

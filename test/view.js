@@ -16,8 +16,8 @@ $(document).ready(function() {
 
   test("View: jQuery", function() {
     view.el = document.body;
-    equals(view.$('#qunit-header a').get(0).innerHTML, ' Backbone Test Suite');
-    equals(view.$('#qunit-header a').get(1).innerHTML, 'Backbone Speed Suite');
+    ok(view.$('#qunit-header a').get(0).innerHTML.match(/Backbone Test Suite/));
+    ok(view.$('#qunit-header a').get(1).innerHTML.match(/Backbone Speed Suite/));
   });
 
   test("View: make", function() {
@@ -53,6 +53,27 @@ $(document).ready(function() {
     view.delegateEvents(events);
     $('#qunit-banner').trigger('click');
     equals(counter, 3);
+    equals(counter2, 3);
+  });
+
+  test("View: undelegateEvents", function() {
+    var counter = counter2 = 0;
+    view.el = document.body;
+    view.increment = function(){ counter++; };
+    $(view.el).unbind('click');
+    $(view.el).bind('click', function(){ counter2++; });
+    var events = {"click #qunit-userAgent": "increment"};
+    view.delegateEvents(events);
+    $('#qunit-userAgent').trigger('click');
+    equals(counter, 1);
+    equals(counter2, 1);
+    view.undelegateEvents();
+    $('#qunit-userAgent').trigger('click');
+    equals(counter, 1);
+    equals(counter2, 2);
+    view.delegateEvents(events);
+    $('#qunit-userAgent').trigger('click');
+    equals(counter, 2);
     equals(counter2, 3);
   });
 
@@ -113,4 +134,25 @@ $(document).ready(function() {
     $("body").trigger("click");
     equals(5, count);
   });
+
+  test("View: custom events, with namespaces", function() {
+    var count = 0;
+    var ViewClass = Backbone.View.extend({
+      el: $('body'),
+      events: function() {
+        return {"fake$event.namespaced": "run"};
+      },
+      run: function() {
+        count++;
+      }
+    });
+
+    var view = new ViewClass;
+    $('body').trigger('fake$event').trigger('fake$event');
+    equals(count, 2);
+    $('body').unbind('.namespaced');
+    $('body').trigger('fake$event');
+    equals(count, 2);
+  });
+
 });
